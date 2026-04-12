@@ -302,3 +302,49 @@
     }
   });
 })();
+
+/** PWA: Service Worker + インストールボタン（Chrome 系など） */
+(function registerPwa() {
+  if (!("serviceWorker" in navigator)) return;
+
+  window.addEventListener("load", () => {
+    const swUrl = new URL("sw.js", document.baseURI).href;
+    const scope = new URL("./", document.baseURI).href;
+    navigator.serviceWorker.register(swUrl, { scope }).catch(() => {});
+  });
+
+  let deferredPrompt = null;
+  const banner = document.createElement("div");
+  banner.id = "pwa-install-banner";
+  banner.hidden = true;
+  banner.innerHTML =
+    '<button type="button" class="pwa-install-btn">アプリとしてインストール</button>' +
+    '<button type="button" class="pwa-install-dismiss" aria-label="閉じる">×</button>';
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    document.body.appendChild(banner);
+    banner.hidden = false;
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredPrompt = null;
+    banner.remove();
+  });
+
+  banner.addEventListener("click", (e) => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest(".pwa-install-dismiss")) {
+      banner.remove();
+      return;
+    }
+    if (target.closest(".pwa-install-btn") && deferredPrompt) {
+      const p = deferredPrompt;
+      deferredPrompt = null;
+      p.prompt();
+      p.userChoice.finally(() => banner.remove());
+    }
+  });
+})();
