@@ -27,9 +27,15 @@
     return typeof s === "string" && new RegExp(`^[0-9]{${CONFIRMER_PIN_LEN}}$`).test(s);
   }
 
-  /** 全角 ０–９ を半角にしてから桁だけ抽出（日本語キーボードの全角数字対応） */
+  /** 数字だけ残す（全角・互換表記は NFKC で半角寄せ） */
   function sanitizePinInput(raw) {
-    const s = String(raw || "").replace(/[\uFF10-\uFF19]/g, (ch) =>
+    let s = String(raw || "");
+    try {
+      s = s.normalize("NFKC");
+    } catch (_) {
+      /* ignore */
+    }
+    s = s.replace(/[\uFF10-\uFF19]/g, (ch) =>
       String.fromCharCode(ch.charCodeAt(0) - 0xff10 + 0x30)
     );
     return s.replace(/\D/g, "").slice(0, CONFIRMER_PIN_LEN);
@@ -374,18 +380,34 @@
     const pinInput = document.createElement("input");
     pinInput.id = "confirmer-pin-input";
     pinInput.className = "input setpw-pin-input";
-    pinInput.type = "text";
+    pinInput.type = "tel";
     pinInput.inputMode = "numeric";
-    pinInput.pattern = "[0-9]*";
     pinInput.maxLength = CONFIRMER_PIN_LEN;
     pinInput.autocomplete = "off";
+    pinInput.spellcheck = false;
+    pinInput.setAttribute("autocapitalize", "none");
+    pinInput.setAttribute("autocorrect", "off");
+    pinInput.enterKeyHint = "done";
     pinInput.placeholder = "例：1234";
     pinInput.value = state.confirmerSecret;
-    pinInput.addEventListener("input", () => {
+    let pinComposing = false;
+    function applyPinFromField() {
       const next = sanitizePinInput(pinInput.value);
       pinInput.value = next;
       state.confirmerSecret = next;
+      syncGo();
       err.classList.add("hidden");
+    }
+    pinInput.addEventListener("compositionstart", () => {
+      pinComposing = true;
+    });
+    pinInput.addEventListener("compositionend", () => {
+      pinComposing = false;
+      applyPinFromField();
+    });
+    pinInput.addEventListener("input", () => {
+      if (pinComposing) return;
+      applyPinFromField();
     });
     pinWrap.appendChild(pinLabel);
     pinWrap.appendChild(pinInput);
@@ -1037,7 +1059,7 @@
 
   let lastLayoutWidth = window.innerWidth;
   window.addEventListener("resize", () => {
-    if (state.phase !== "blocked" && state.phase !== "setPassword") return;
+    if (state.phase !== "blocked") return;
     const w = window.innerWidth;
     if (w === lastLayoutWidth) return;
     lastLayoutWidth = w;
