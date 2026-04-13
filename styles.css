@@ -463,8 +463,10 @@ body {
 
 /* ----- 完了 ----- */
 .view-done {
+  position: relative;
   min-height: 100%;
   min-height: 100dvh;
+  overflow: hidden;
   background: linear-gradient(135deg, #dfe6e9 0%, #b2bec3 100%);
   display: flex;
   align-items: center;
@@ -472,7 +474,18 @@ body {
   padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
 }
 
+.done-fireworks-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .done-inner {
+  position: relative;
+  z-index: 1;
   text-align: center;
   max-width: 400px;
 }
@@ -482,6 +495,13 @@ body {
   font-weight: 700;
   color: #212529;
   margin: 0 0 12px;
+  text-shadow: 0 0 24px rgba(255, 255, 255, 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .done-fireworks-canvas {
+    display: none;
+  }
 }
 
 .done-body {

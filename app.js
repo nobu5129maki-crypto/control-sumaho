@@ -515,6 +515,127 @@
     appEl.appendChild(root);
   }
 
+  function attachDoneFireworks(container) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.className = "done-fireworks-canvas";
+    canvas.setAttribute("aria-hidden", "true");
+    container.insertBefore(canvas, container.firstChild);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const colors = ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#c77dff", "#ff9ff3", "#ffa94d", "#69db7c"];
+
+    let W = 0;
+    let H = 0;
+    /** @type {Array<{rocket?:boolean,x:number,y:number,vx:number,vy:number,life?:number,decay?:number,color:string,size?:number}>} */
+    const particles = [];
+
+    function resize() {
+      const r = container.getBoundingClientRect();
+      W = Math.max(1, Math.floor(r.width));
+      H = Math.max(1, Math.floor(r.height));
+      canvas.width = W;
+      canvas.height = H;
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+
+    function burst(x, y) {
+      const n = 48 + Math.floor(Math.random() * 28);
+      for (let i = 0; i < n; i++) {
+        const a = (Math.PI * 2 * i) / n + Math.random() * 0.4;
+        const sp = 2.2 + Math.random() * 4.2;
+        particles.push({
+          x,
+          y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          life: 1,
+          decay: 0.01 + Math.random() * 0.012,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: 1.5 + Math.random() * 2.2,
+        });
+      }
+    }
+
+    function launchRocket() {
+      const x = W * (0.12 + Math.random() * 0.76);
+      particles.push({
+        rocket: true,
+        x,
+        y: H + 8,
+        vx: (Math.random() - 0.5) * 1.4,
+        vy: -(9 + Math.random() * 4),
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+
+    let last = 0;
+    let spawnAcc = 0;
+    let nextSpawn = 400;
+
+    function frame(t) {
+      if (!canvas.isConnected) {
+        ro.disconnect();
+        return;
+      }
+      const dt = last ? Math.min(48, t - last) : 16;
+      last = t;
+
+      ctx.clearRect(0, 0, W, H);
+
+      spawnAcc += dt;
+      if (spawnAcc >= nextSpawn) {
+        spawnAcc = 0;
+        nextSpawn = 650 + Math.random() * 900;
+        if (W > 40 && H > 40) launchRocket();
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        if (p.rocket) {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.18;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3.2, 0, Math.PI * 2);
+          ctx.fillStyle = p.color;
+          ctx.fill();
+          if (p.vy >= -0.2 || p.y < H * 0.16) {
+            burst(p.x, p.y);
+            particles.splice(i, 1);
+          }
+        } else {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.1;
+          if (p.life === undefined || p.decay === undefined) {
+            particles.splice(i, 1);
+            continue;
+          }
+          p.life -= p.decay;
+          if (p.life <= 0 || p.size === undefined) {
+            particles.splice(i, 1);
+            continue;
+          }
+          ctx.globalAlpha = Math.max(0, p.life);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fillStyle = p.color;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
   function renderDone() {
     const wrap = document.createElement("div");
     wrap.className = "view-done";
@@ -545,6 +666,7 @@
     inner.appendChild(back);
     wrap.appendChild(inner);
     appEl.appendChild(wrap);
+    attachDoneFireworks(wrap);
   }
 
   loadHistory();
