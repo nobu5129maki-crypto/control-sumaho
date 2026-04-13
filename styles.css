@@ -244,6 +244,82 @@ body {
   opacity: 0.85;
 }
 
+/* ----- 確認者：パスワード決定 ----- */
+.view-set-password {
+  min-height: 100%;
+  min-height: 100dvh;
+  background: linear-gradient(135deg, #e8ecf0 0%, #dee2e6 100%);
+  padding: max(12px, env(safe-area-inset-top)) 20px max(16px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+
+.setpw-heading {
+  font-size: 24px;
+  font-weight: 700;
+  color: #212529;
+  margin: 0 0 10px;
+}
+
+.setpw-lead {
+  font-size: 18px;
+  font-weight: 700;
+  color: #212529;
+  margin: 0 0 8px;
+}
+
+.setpw-sub {
+  font-size: 14px;
+  line-height: 1.45;
+  color: #495057;
+  margin: 0 0 20px;
+}
+
+.setpw-pin-wrap {
+  margin-bottom: 8px;
+}
+
+.setpw-pin-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #495057;
+  margin: 0 0 6px;
+}
+
+.setpw-pin-input {
+  font-size: 22px;
+  letter-spacing: 0.35em;
+  font-variant-numeric: tabular-nums;
+}
+
+.setpw-err {
+  font-size: 13px;
+  color: #c92a2a;
+  margin: 0 0 12px;
+}
+
+.setpw-err.hidden {
+  display: none !important;
+}
+
+.ghost-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid #ced4da;
+  border-radius: 12px;
+  background: #fff;
+  color: #495057;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.ghost-btn:active {
+  opacity: 0.92;
+}
+
 /* ----- 集中（パネル） ----- */
 .view-blocked {
   position: fixed;
@@ -277,14 +353,8 @@ body {
   color: rgba(255, 255, 255, 0.85);
 }
 
-.blocked-confirmer-code {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: #fff;
-  font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+.blocked-confirmer-banner-text:last-child {
+  margin-bottom: 0;
 }
 
 .panel {

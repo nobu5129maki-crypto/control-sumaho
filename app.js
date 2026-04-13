@@ -20,13 +20,17 @@
     return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
 
-  /** 確認者モードで覆ったあと入力照合に使う合言葉（編集画面では入力しない） */
-  function newConfirmerSecret() {
-    const n = Math.floor(100000 + Math.random() * 900000);
-    return String(n);
+  const CONFIRMER_PIN_LEN = 4;
+
+  function isValidConfirmerPin(s) {
+    return typeof s === "string" && new RegExp(`^[0-9]{${CONFIRMER_PIN_LEN}}$`).test(s);
   }
 
-  /** @type {{ phase: 'edit'|'blocked'|'done', confirmPasswordMode: boolean, confirmerSecret: string, tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
+  function sanitizePinInput(raw) {
+    return String(raw || "").replace(/\D/g, "").slice(0, CONFIRMER_PIN_LEN);
+  }
+
+  /** @type {{ phase: 'edit'|'setPassword'|'blocked'|'done', confirmPasswordMode: boolean, confirmerSecret: string, tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
   const state = {
     phase: "edit",
     confirmPasswordMode: false,
@@ -97,6 +101,10 @@
       renderBlocked();
       return;
     }
+    if (state.phase === "setPassword") {
+      renderSetPassword();
+      return;
+    }
     if (state.phase === "done") {
       renderDone();
       return;
@@ -116,7 +124,7 @@
     sub.className = "edit-sub";
     function syncSubText() {
       sub.textContent = state.confirmPasswordMode
-        ? "項目の追加〜画面を覆うまでの操作はいつもと同じです。覆った画面で、各帯に確認者のパスワード欄が現れます。"
+        ? "確認者は次の「パスワードを決める」画面で4桁の数字を決めます。そのあと画面が覆われ、各帯で同じ4桁を入力して解除します。"
         : "完了するまで画面がカラフルなパネルで覆われます。項目をタップするとその帯だけ外れ、下の画面が見えます。";
     }
     syncSubText();
@@ -191,24 +199,6 @@
 
     input.addEventListener("input", rebuildChips);
 
-    let secretHint = null;
-    let secretInput = null;
-    if (state.confirmPasswordMode) {
-      secretHint = document.createElement("p");
-      secretHint.className = "confirmer-secret-hint";
-      secretHint.textContent =
-        "覆う前に、確認者へ伝える解除用パスワードを決めてください（各帯でこの内容を入力してもらいます）。";
-      secretInput = document.createElement("input");
-      secretInput.type = "password";
-      secretInput.className = "input";
-      secretInput.placeholder = "解除用パスワード";
-      secretInput.autocomplete = "new-password";
-      secretInput.value = state.confirmerSecret;
-      secretInput.addEventListener("input", () => {
-        state.confirmerSecret = secretInput.value;
-      });
-    }
-
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "add-btn";
@@ -264,12 +254,16 @@
     startBtn.type = "button";
     startBtn.className = "start-btn";
     startBtn.textContent = "画面を覆って集中する";
-    const confirmerReady =
-      !state.confirmPasswordMode || (state.confirmerSecret || "").trim().length > 0;
-    startBtn.disabled = state.tasks.length === 0 || !confirmerReady;
+    startBtn.disabled = state.tasks.length === 0;
     startBtn.addEventListener("click", () => {
       if (state.tasks.length === 0) return;
-      if (state.confirmPasswordMode && !(state.confirmerSecret || "").trim()) return;
+      if (state.confirmPasswordMode) {
+        state.confirmerSecret = "";
+        state.phase = "setPassword";
+        render();
+        return;
+      }
+      state.confirmerSecret = "";
       state.confirmations = {};
       state.tasks.forEach((t) => {
         state.confirmations[t.id] = false;
@@ -290,14 +284,108 @@
     appEl.appendChild(wrap);
   }
 
+  function renderSetPassword() {
+    const wrap = document.createElement("div");
+    wrap.className = "view-set-password";
+
+    const h1 = document.createElement("h1");
+    h1.className = "setpw-heading";
+    h1.textContent = "確認者：パスワードを決める";
+
+    const lead = document.createElement("p");
+    lead.className = "setpw-lead";
+    lead.textContent = "パスワードは4桁の数字です。";
+
+    const sub = document.createElement("p");
+    sub.className = "setpw-sub";
+    sub.textContent =
+      "決めた4桁は、このあと画面が覆われたときに各項目の解除でも同じものを入力します。";
+
+    const err = document.createElement("p");
+    err.className = "setpw-err hidden";
+    err.setAttribute("aria-live", "polite");
+
+    const pinWrap = document.createElement("div");
+    pinWrap.className = "setpw-pin-wrap";
+    const pinLabel = document.createElement("label");
+    pinLabel.className = "setpw-pin-label";
+    pinLabel.setAttribute("for", "confirmer-pin-input");
+    pinLabel.textContent = "4桁の数字（半角）";
+    const pinInput = document.createElement("input");
+    pinInput.id = "confirmer-pin-input";
+    pinInput.className = "input setpw-pin-input";
+    pinInput.type = "text";
+    pinInput.inputMode = "numeric";
+    pinInput.pattern = "[0-9]*";
+    pinInput.maxLength = CONFIRMER_PIN_LEN;
+    pinInput.autocomplete = "off";
+    pinInput.placeholder = "例：1234";
+    pinInput.value = state.confirmerSecret;
+    pinInput.addEventListener("input", () => {
+      const next = sanitizePinInput(pinInput.value);
+      pinInput.value = next;
+      state.confirmerSecret = next;
+      err.classList.add("hidden");
+    });
+    pinWrap.appendChild(pinLabel);
+    pinWrap.appendChild(pinInput);
+
+    const goBtn = document.createElement("button");
+    goBtn.type = "button";
+    goBtn.className = "start-btn";
+    goBtn.textContent = "画面を覆る";
+    function syncGo() {
+      goBtn.disabled = !isValidConfirmerPin(state.confirmerSecret);
+    }
+    syncGo();
+
+    goBtn.addEventListener("click", () => {
+      if (!isValidConfirmerPin(state.confirmerSecret)) {
+        err.textContent = "4桁の半角数字を入力してください。";
+        err.classList.remove("hidden");
+        pinInput.focus();
+        return;
+      }
+      state.confirmations = {};
+      state.tasks.forEach((t) => {
+        state.confirmations[t.id] = false;
+      });
+      state.phase = "blocked";
+      render();
+    });
+
+    const backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "ghost-btn";
+    backBtn.textContent = "やるべきことに戻る";
+    backBtn.addEventListener("click", () => {
+      state.confirmerSecret = "";
+      state.phase = "edit";
+      render();
+    });
+
+    wrap.appendChild(h1);
+    wrap.appendChild(lead);
+    wrap.appendChild(sub);
+    wrap.appendChild(pinWrap);
+    wrap.appendChild(err);
+    wrap.appendChild(goBtn);
+    wrap.appendChild(backBtn);
+
+    appEl.appendChild(wrap);
+    pinInput.focus();
+  }
+
   function renderBlocked() {
     const total = state.tasks.length;
     const root = document.createElement("div");
     root.className = "view-blocked";
 
     if (state.confirmPasswordMode) {
-      if (!(state.confirmerSecret || "").trim()) {
-        state.confirmerSecret = newConfirmerSecret();
+      if (!isValidConfirmerPin(state.confirmerSecret)) {
+        state.phase = "setPassword";
+        render();
+        return;
       }
       const banner = document.createElement("div");
       banner.className = "blocked-confirmer-banner";
@@ -305,12 +393,12 @@
       bannerInner.className = "blocked-confirmer-banner-inner";
       const line1 = document.createElement("p");
       line1.className = "blocked-confirmer-banner-text";
-      line1.textContent = "確認者に伝える合言葉（この画面にだけ表示されます）";
-      const code = document.createElement("p");
-      code.className = "blocked-confirmer-code";
-      code.textContent = state.confirmerSecret;
+      line1.textContent = "パスワードは4桁の数字です。";
+      const line2 = document.createElement("p");
+      line2.className = "blocked-confirmer-banner-text";
+      line2.textContent = "確認者は、決めた4桁を各帯の入力欄に入れて解除してください。";
       bannerInner.appendChild(line1);
-      bannerInner.appendChild(code);
+      bannerInner.appendChild(line2);
       banner.appendChild(bannerInner);
       root.appendChild(banner);
     }
@@ -354,13 +442,18 @@
         err.setAttribute("aria-live", "polite");
         const pwdLbl = document.createElement("label");
         pwdLbl.className = "panel-password-label";
-        pwdLbl.textContent = "確認者のパスワード";
+        pwdLbl.textContent = "確認者のパスワード（4桁の数字）";
         const pwdIn = document.createElement("input");
         pwdIn.type = "password";
         pwdIn.className = "panel-password-input";
         pwdIn.id = `confirmer-pwd-${task.id}`;
-        pwdIn.placeholder = "合言葉を入力";
+        pwdIn.inputMode = "numeric";
+        pwdIn.maxLength = CONFIRMER_PIN_LEN;
+        pwdIn.placeholder = "4桁の数字";
         pwdIn.autocomplete = "off";
+        pwdIn.addEventListener("input", () => {
+          pwdIn.value = sanitizePinInput(pwdIn.value);
+        });
         pwdLbl.setAttribute("for", pwdIn.id);
         const submit = document.createElement("button");
         submit.type = "button";
@@ -368,10 +461,10 @@
         submit.textContent = "解除";
 
         function tryUnlock() {
-          const expected = (state.confirmerSecret || "").trim();
-          const got = (pwdIn.value || "").trim();
-          if (got !== expected) {
-            err.textContent = "パスワードが違います";
+          const expected = state.confirmerSecret;
+          const got = sanitizePinInput(pwdIn.value);
+          if (!isValidConfirmerPin(got) || got !== expected) {
+            err.textContent = "4桁の数字が違います";
             err.classList.remove("hidden");
             pwdIn.select();
             return;
@@ -459,7 +552,7 @@
   render();
 
   window.addEventListener("resize", () => {
-    if (state.phase === "blocked") {
+    if (state.phase === "blocked" || state.phase === "setPassword") {
       render();
     }
   });
