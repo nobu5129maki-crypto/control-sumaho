@@ -48,13 +48,6 @@ body {
   margin: 0 0 16px;
 }
 
-.confirmer-secret-hint {
-  font-size: 13px;
-  line-height: 1.45;
-  color: #495057;
-  margin: 0 0 8px;
-}
-
 .input {
   width: 100%;
   border: 1px solid #ced4da;
@@ -260,11 +253,46 @@ body {
   overflow: hidden;
 }
 
+.blocked-confirmer-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  padding: max(10px, env(safe-area-inset-top)) 14px 10px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.55) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.blocked-confirmer-banner-inner {
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.blocked-confirmer-banner-text {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.blocked-confirmer-code {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
 .panel {
   position: absolute;
   left: 0;
   right: 0;
   overflow: hidden;
+  z-index: 1;
 }
 
 .panel-inner {

@@ -20,6 +20,12 @@
     return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
 
+  /** 確認者モードで覆ったあと入力照合に使う合言葉（編集画面では入力しない） */
+  function newConfirmerSecret() {
+    const n = Math.floor(100000 + Math.random() * 900000);
+    return String(n);
+  }
+
   /** @type {{ phase: 'edit'|'blocked'|'done', confirmPasswordMode: boolean, confirmerSecret: string, tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
   const state = {
     phase: "edit",
@@ -110,7 +116,7 @@
     sub.className = "edit-sub";
     function syncSubText() {
       sub.textContent = state.confirmPasswordMode
-        ? "項目の追加〜画面を覆うまでの操作はいつもと同じです。覆ったあと、各帯に確認者のパスワード欄があり、正しいパスワードを入れないとその項目は消えません。"
+        ? "項目の追加〜画面を覆うまでの操作はいつもと同じです。覆った画面で、各帯に確認者のパスワード欄が現れます。"
         : "完了するまで画面がカラフルなパネルで覆われます。項目をタップするとその帯だけ外れ、下の画面が見えます。";
     }
     syncSubText();
@@ -275,10 +281,6 @@
     wrap.appendChild(h1);
     wrap.appendChild(sub);
     wrap.appendChild(modeRow);
-    if (secretHint && secretInput) {
-      wrap.appendChild(secretHint);
-      wrap.appendChild(secretInput);
-    }
     wrap.appendChild(input);
     rebuildChips();
     wrap.appendChild(addBtn);
@@ -292,6 +294,26 @@
     const total = state.tasks.length;
     const root = document.createElement("div");
     root.className = "view-blocked";
+
+    if (state.confirmPasswordMode) {
+      if (!(state.confirmerSecret || "").trim()) {
+        state.confirmerSecret = newConfirmerSecret();
+      }
+      const banner = document.createElement("div");
+      banner.className = "blocked-confirmer-banner";
+      const bannerInner = document.createElement("div");
+      bannerInner.className = "blocked-confirmer-banner-inner";
+      const line1 = document.createElement("p");
+      line1.className = "blocked-confirmer-banner-text";
+      line1.textContent = "確認者に伝える合言葉（この画面にだけ表示されます）";
+      const code = document.createElement("p");
+      code.className = "blocked-confirmer-code";
+      code.textContent = state.confirmerSecret;
+      bannerInner.appendChild(line1);
+      bannerInner.appendChild(code);
+      banner.appendChild(bannerInner);
+      root.appendChild(banner);
+    }
 
     state.tasks.forEach((task, index) => {
       if (state.confirmations[task.id] === true) return;
@@ -337,7 +359,7 @@
         pwdIn.type = "password";
         pwdIn.className = "panel-password-input";
         pwdIn.id = `confirmer-pwd-${task.id}`;
-        pwdIn.placeholder = "解除用パスワードを入力";
+        pwdIn.placeholder = "合言葉を入力";
         pwdIn.autocomplete = "off";
         pwdLbl.setAttribute("for", pwdIn.id);
         const submit = document.createElement("button");
@@ -421,6 +443,7 @@
     back.addEventListener("click", () => {
       state.phase = "edit";
       state.confirmations = {};
+      state.confirmerSecret = "";
       render();
     });
 
