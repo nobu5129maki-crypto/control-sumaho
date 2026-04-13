@@ -26,8 +26,12 @@
     return typeof s === "string" && new RegExp(`^[0-9]{${CONFIRMER_PIN_LEN}}$`).test(s);
   }
 
+  /** 全角 ０–９ を半角にしてから桁だけ抽出（日本語キーボードの全角数字対応） */
   function sanitizePinInput(raw) {
-    return String(raw || "").replace(/\D/g, "").slice(0, CONFIRMER_PIN_LEN);
+    const s = String(raw || "").replace(/[\uFF10-\uFF19]/g, (ch) =>
+      String.fromCharCode(ch.charCodeAt(0) - 0xff10 + 0x30)
+    );
+    return s.replace(/\D/g, "").slice(0, CONFIRMER_PIN_LEN);
   }
 
   /** @type {{ phase: 'edit'|'setPassword'|'blocked'|'done', confirmPasswordMode: boolean, confirmerSecret: string, tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
@@ -973,10 +977,13 @@
   loadConfirmerMode();
   render();
 
+  let lastLayoutWidth = window.innerWidth;
   window.addEventListener("resize", () => {
-    if (state.phase === "blocked" || state.phase === "setPassword") {
-      render();
-    }
+    if (state.phase !== "blocked" && state.phase !== "setPassword") return;
+    const w = window.innerWidth;
+    if (w === lastLayoutWidth) return;
+    lastLayoutWidth = w;
+    render();
   });
 })();
 
