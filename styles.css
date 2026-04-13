@@ -48,6 +48,13 @@ body {
   margin: 0 0 16px;
 }
 
+.confirmer-secret-hint {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #495057;
+  margin: 0 0 8px;
+}
+
 .input {
   width: 100%;
   border: 1px solid #ced4da;
@@ -192,25 +199,10 @@ body {
 
 .list-row {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 4px;
-  border-bottom: 1px solid #ced4da;
-}
-
-.list-row-top {
-  display: flex;
   align-items: flex-start;
   gap: 12px;
-  width: 100%;
-}
-
-.list-password-wrap {
-  width: 100%;
-}
-
-.input--inline {
-  margin-bottom: 0;
+  padding: 12px 4px;
+  border-bottom: 1px solid #ced4da;
 }
 
 .list-text {
@@ -324,6 +316,14 @@ body {
 
 .panel-password-form .panel-title {
   margin-bottom: 2px;
+}
+
+.panel-password-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .panel-password-input {

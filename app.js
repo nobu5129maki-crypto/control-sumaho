@@ -20,10 +20,11 @@
     return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
 
-  /** @type {{ phase: 'edit'|'blocked'|'done', confirmPasswordMode: boolean, tasks: {id:string,title:string,password:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
+  /** @type {{ phase: 'edit'|'blocked'|'done', confirmPasswordMode: boolean, confirmerSecret: string, tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
   const state = {
     phase: "edit",
     confirmPasswordMode: false,
+    confirmerSecret: "",
     tasks: [],
     titleHistory: [],
     confirmations: {},
@@ -109,7 +110,7 @@
     sub.className = "edit-sub";
     function syncSubText() {
       sub.textContent = state.confirmPasswordMode
-        ? "確認者モードでは、各項目に設定したパスワードを確認者が入力すると、その帯だけ外れます。"
+        ? "項目の追加〜画面を覆うまでの操作はいつもと同じです。覆ったあと、各帯に確認者のパスワード欄があり、正しいパスワードを入れないとその項目は消えません。"
         : "完了するまで画面がカラフルなパネルで覆われます。項目をタップするとその帯だけ外れ、下の画面が見えます。";
     }
     syncSubText();
@@ -184,13 +185,22 @@
 
     input.addEventListener("input", rebuildChips);
 
-    let pwdInput = null;
+    let secretHint = null;
+    let secretInput = null;
     if (state.confirmPasswordMode) {
-      pwdInput = document.createElement("input");
-      pwdInput.type = "password";
-      pwdInput.className = "input";
-      pwdInput.placeholder = "この項目の解除パスワード（確認者が入力）";
-      pwdInput.autocomplete = "new-password";
+      secretHint = document.createElement("p");
+      secretHint.className = "confirmer-secret-hint";
+      secretHint.textContent =
+        "覆う前に、確認者へ伝える解除用パスワードを決めてください（各帯でこの内容を入力してもらいます）。";
+      secretInput = document.createElement("input");
+      secretInput.type = "password";
+      secretInput.className = "input";
+      secretInput.placeholder = "解除用パスワード";
+      secretInput.autocomplete = "new-password";
+      secretInput.value = state.confirmerSecret;
+      secretInput.addEventListener("input", () => {
+        state.confirmerSecret = secretInput.value;
+      });
     }
 
     const addBtn = document.createElement("button");
@@ -200,15 +210,9 @@
     addBtn.addEventListener("click", () => {
       const title = input.value.trim();
       if (!title) return;
-      let password = "";
-      if (state.confirmPasswordMode) {
-        password = (pwdInput && pwdInput.value) ? pwdInput.value : "";
-        if (!password.trim()) return;
-      }
-      state.tasks.push({ id: newId(), title, password });
+      state.tasks.push({ id: newId(), title });
       pushTitleHistory(title);
       input.value = "";
-      if (pwdInput) pwdInput.value = "";
       rebuildChips();
       render();
     });
@@ -220,7 +224,6 @@
       }
     }
     input.addEventListener("keydown", onEnterAdd);
-    if (pwdInput) pwdInput.addEventListener("keydown", onEnterAdd);
 
     const listWrap = document.createElement("div");
     listWrap.className = "task-list";
@@ -232,11 +235,8 @@
       listWrap.appendChild(empty);
     } else {
       state.tasks.forEach((t) => {
-        if (typeof t.password !== "string") t.password = "";
         const row = document.createElement("div");
         row.className = "list-row";
-        const top = document.createElement("div");
-        top.className = "list-row-top";
         const text = document.createElement("div");
         text.className = "list-text";
         text.textContent = t.title;
@@ -248,24 +248,8 @@
           state.tasks = state.tasks.filter((x) => x.id !== t.id);
           render();
         });
-        top.appendChild(text);
-        top.appendChild(del);
-        row.appendChild(top);
-        if (state.confirmPasswordMode) {
-          const pwdRow = document.createElement("div");
-          pwdRow.className = "list-password-wrap";
-          const pIn = document.createElement("input");
-          pIn.type = "password";
-          pIn.className = "input input--inline";
-          pIn.placeholder = "解除パスワード";
-          pIn.value = t.password;
-          pIn.autocomplete = "new-password";
-          pIn.addEventListener("input", () => {
-            t.password = pIn.value;
-          });
-          pwdRow.appendChild(pIn);
-          row.appendChild(pwdRow);
-        }
+        row.appendChild(text);
+        row.appendChild(del);
         listWrap.appendChild(row);
       });
     }
@@ -275,12 +259,11 @@
     startBtn.className = "start-btn";
     startBtn.textContent = "画面を覆って集中する";
     const confirmerReady =
-      !state.confirmPasswordMode ||
-      state.tasks.every((t) => (t.password || "").trim().length > 0);
+      !state.confirmPasswordMode || (state.confirmerSecret || "").trim().length > 0;
     startBtn.disabled = state.tasks.length === 0 || !confirmerReady;
     startBtn.addEventListener("click", () => {
       if (state.tasks.length === 0) return;
-      if (state.confirmPasswordMode && !state.tasks.every((t) => (t.password || "").trim())) return;
+      if (state.confirmPasswordMode && !(state.confirmerSecret || "").trim()) return;
       state.confirmations = {};
       state.tasks.forEach((t) => {
         state.confirmations[t.id] = false;
@@ -292,8 +275,11 @@
     wrap.appendChild(h1);
     wrap.appendChild(sub);
     wrap.appendChild(modeRow);
+    if (secretHint && secretInput) {
+      wrap.appendChild(secretHint);
+      wrap.appendChild(secretInput);
+    }
     wrap.appendChild(input);
-    if (pwdInput) wrap.appendChild(pwdInput);
     rebuildChips();
     wrap.appendChild(addBtn);
     wrap.appendChild(listWrap);
@@ -344,19 +330,25 @@
         const err = document.createElement("p");
         err.className = "panel-password-err hidden";
         err.setAttribute("aria-live", "polite");
+        const pwdLbl = document.createElement("label");
+        pwdLbl.className = "panel-password-label";
+        pwdLbl.textContent = "確認者のパスワード";
         const pwdIn = document.createElement("input");
         pwdIn.type = "password";
         pwdIn.className = "panel-password-input";
-        pwdIn.placeholder = "パスワード";
+        pwdIn.id = `confirmer-pwd-${task.id}`;
+        pwdIn.placeholder = "解除用パスワードを入力";
         pwdIn.autocomplete = "off";
+        pwdLbl.setAttribute("for", pwdIn.id);
         const submit = document.createElement("button");
         submit.type = "button";
         submit.className = "panel-password-submit";
         submit.textContent = "解除";
 
         function tryUnlock() {
-          const expected = typeof task.password === "string" ? task.password : "";
-          if (pwdIn.value !== expected) {
+          const expected = (state.confirmerSecret || "").trim();
+          const got = (pwdIn.value || "").trim();
+          if (got !== expected) {
             err.textContent = "パスワードが違います";
             err.classList.remove("hidden");
             pwdIn.select();
@@ -383,6 +375,7 @@
         });
         pwdIn.addEventListener("click", (e) => e.stopPropagation());
         form.appendChild(title);
+        form.appendChild(pwdLbl);
         form.appendChild(pwdIn);
         form.appendChild(submit);
         form.appendChild(err);
