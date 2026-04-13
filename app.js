@@ -2,6 +2,7 @@
   "use strict";
 
   const TITLE_HISTORY_KEY = "yarubekikoto_title_history_v1";
+  const CONFIRMER_MODE_KEY = "yarubekikoto_confirmer_mode_v1";
   const MAX_TITLE_HISTORY = 50;
 
   const SEGMENT_GRADIENTS = [
@@ -19,13 +20,31 @@
     return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
 
-  /** @type {{ phase: 'edit'|'blocked'|'done', tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
+  /** @type {{ phase: 'edit'|'blocked'|'done', confirmPasswordMode: boolean, tasks: {id:string,title:string,password:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
   const state = {
     phase: "edit",
+    confirmPasswordMode: false,
     tasks: [],
     titleHistory: [],
     confirmations: {},
   };
+
+  function loadConfirmerMode() {
+    try {
+      const raw = localStorage.getItem(CONFIRMER_MODE_KEY);
+      state.confirmPasswordMode = raw === "1";
+    } catch (_) {
+      state.confirmPasswordMode = false;
+    }
+  }
+
+  function saveConfirmerMode() {
+    try {
+      localStorage.setItem(CONFIRMER_MODE_KEY, state.confirmPasswordMode ? "1" : "0");
+    } catch (_) {
+      /* ignore */
+    }
+  }
 
   const appEl = document.getElementById("app");
   if (!appEl) return;
@@ -88,8 +107,35 @@
 
     const sub = document.createElement("p");
     sub.className = "edit-sub";
-    sub.textContent =
-      "完了するまで画面がカラフルなパネルで覆われます。項目をタップするとその帯だけ外れ、下の画面が見えます。";
+    function syncSubText() {
+      sub.textContent = state.confirmPasswordMode
+        ? "確認者モードでは、各項目に設定したパスワードを確認者が入力すると、その帯だけ外れます。"
+        : "完了するまで画面がカラフルなパネルで覆われます。項目をタップするとその帯だけ外れ、下の画面が見えます。";
+    }
+    syncSubText();
+
+    const modeRow = document.createElement("div");
+    modeRow.className = "mode-row";
+    const modeLabel = document.createElement("span");
+    modeLabel.className = "mode-label";
+    modeLabel.textContent = "確認者モード（パスワードで解除）";
+    const modeSwitch = document.createElement("button");
+    modeSwitch.type = "button";
+    modeSwitch.className = "mode-switch";
+    modeSwitch.setAttribute("role", "switch");
+    modeSwitch.setAttribute("aria-checked", state.confirmPasswordMode ? "true" : "false");
+    modeSwitch.setAttribute("aria-label", "確認者モードの切り替え");
+    const modeKnob = document.createElement("span");
+    modeKnob.className = "mode-switch-knob";
+    modeSwitch.appendChild(modeKnob);
+    if (state.confirmPasswordMode) modeSwitch.classList.add("is-on");
+    modeSwitch.addEventListener("click", () => {
+      state.confirmPasswordMode = !state.confirmPasswordMode;
+      saveConfirmerMode();
+      render();
+    });
+    modeRow.appendChild(modeLabel);
+    modeRow.appendChild(modeSwitch);
 
     const input = document.createElement("input");
     input.type = "text";
@@ -138,6 +184,15 @@
 
     input.addEventListener("input", rebuildChips);
 
+    let pwdInput = null;
+    if (state.confirmPasswordMode) {
+      pwdInput = document.createElement("input");
+      pwdInput.type = "password";
+      pwdInput.className = "input";
+      pwdInput.placeholder = "この項目の解除パスワード（確認者が入力）";
+      pwdInput.autocomplete = "new-password";
+    }
+
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "add-btn";
@@ -145,19 +200,27 @@
     addBtn.addEventListener("click", () => {
       const title = input.value.trim();
       if (!title) return;
-      state.tasks.push({ id: newId(), title });
+      let password = "";
+      if (state.confirmPasswordMode) {
+        password = (pwdInput && pwdInput.value) ? pwdInput.value : "";
+        if (!password.trim()) return;
+      }
+      state.tasks.push({ id: newId(), title, password });
       pushTitleHistory(title);
       input.value = "";
+      if (pwdInput) pwdInput.value = "";
       rebuildChips();
       render();
     });
 
-    input.addEventListener("keydown", (e) => {
+    function onEnterAdd(e) {
       if (e.key === "Enter") {
         e.preventDefault();
         addBtn.click();
       }
-    });
+    }
+    input.addEventListener("keydown", onEnterAdd);
+    if (pwdInput) pwdInput.addEventListener("keydown", onEnterAdd);
 
     const listWrap = document.createElement("div");
     listWrap.className = "task-list";
@@ -169,8 +232,11 @@
       listWrap.appendChild(empty);
     } else {
       state.tasks.forEach((t) => {
+        if (typeof t.password !== "string") t.password = "";
         const row = document.createElement("div");
         row.className = "list-row";
+        const top = document.createElement("div");
+        top.className = "list-row-top";
         const text = document.createElement("div");
         text.className = "list-text";
         text.textContent = t.title;
@@ -182,8 +248,24 @@
           state.tasks = state.tasks.filter((x) => x.id !== t.id);
           render();
         });
-        row.appendChild(text);
-        row.appendChild(del);
+        top.appendChild(text);
+        top.appendChild(del);
+        row.appendChild(top);
+        if (state.confirmPasswordMode) {
+          const pwdRow = document.createElement("div");
+          pwdRow.className = "list-password-wrap";
+          const pIn = document.createElement("input");
+          pIn.type = "password";
+          pIn.className = "input input--inline";
+          pIn.placeholder = "解除パスワード";
+          pIn.value = t.password;
+          pIn.autocomplete = "new-password";
+          pIn.addEventListener("input", () => {
+            t.password = pIn.value;
+          });
+          pwdRow.appendChild(pIn);
+          row.appendChild(pwdRow);
+        }
         listWrap.appendChild(row);
       });
     }
@@ -192,9 +274,13 @@
     startBtn.type = "button";
     startBtn.className = "start-btn";
     startBtn.textContent = "画面を覆って集中する";
-    startBtn.disabled = state.tasks.length === 0;
+    const confirmerReady =
+      !state.confirmPasswordMode ||
+      state.tasks.every((t) => (t.password || "").trim().length > 0);
+    startBtn.disabled = state.tasks.length === 0 || !confirmerReady;
     startBtn.addEventListener("click", () => {
       if (state.tasks.length === 0) return;
+      if (state.confirmPasswordMode && !state.tasks.every((t) => (t.password || "").trim())) return;
       state.confirmations = {};
       state.tasks.forEach((t) => {
         state.confirmations[t.id] = false;
@@ -205,7 +291,9 @@
 
     wrap.appendChild(h1);
     wrap.appendChild(sub);
+    wrap.appendChild(modeRow);
     wrap.appendChild(input);
+    if (pwdInput) wrap.appendChild(pwdInput);
     rebuildChips();
     wrap.appendChild(addBtn);
     wrap.appendChild(listWrap);
@@ -235,27 +323,84 @@
       inner.className = "panel-inner";
       inner.style.background = `linear-gradient(135deg, ${c0}, ${c1})`;
 
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "panel-hit";
-      btn.setAttribute("aria-label", `完了: ${task.title}`);
+      const hit = state.confirmPasswordMode ? document.createElement("div") : document.createElement("button");
+      if (!state.confirmPasswordMode) {
+        hit.type = "button";
+      }
+      hit.className = "panel-hit";
+      hit.setAttribute(
+        "aria-label",
+        state.confirmPasswordMode ? `パスワードで解除: ${task.title}` : `完了: ${task.title}`
+      );
 
       const title = document.createElement("p");
       title.className = "panel-title";
       title.textContent = task.title;
 
-      btn.appendChild(title);
-      btn.addEventListener("click", () => {
-        state.confirmations[task.id] = true;
-        const allDone = state.tasks.every((t) => state.confirmations[t.id] === true);
-        if (allDone) {
-          state.phase = "done";
+      if (state.confirmPasswordMode) {
+        hit.classList.add("panel-hit--password");
+        const form = document.createElement("div");
+        form.className = "panel-password-form";
+        const err = document.createElement("p");
+        err.className = "panel-password-err hidden";
+        err.setAttribute("aria-live", "polite");
+        const pwdIn = document.createElement("input");
+        pwdIn.type = "password";
+        pwdIn.className = "panel-password-input";
+        pwdIn.placeholder = "パスワード";
+        pwdIn.autocomplete = "off";
+        const submit = document.createElement("button");
+        submit.type = "button";
+        submit.className = "panel-password-submit";
+        submit.textContent = "解除";
+
+        function tryUnlock() {
+          const expected = typeof task.password === "string" ? task.password : "";
+          if (pwdIn.value !== expected) {
+            err.textContent = "パスワードが違います";
+            err.classList.remove("hidden");
+            pwdIn.select();
+            return;
+          }
+          err.classList.add("hidden");
+          state.confirmations[task.id] = true;
+          const allDone = state.tasks.every((t) => state.confirmations[t.id] === true);
+          if (allDone) {
+            state.phase = "done";
+          }
+          render();
         }
-        render();
-      });
+        submit.addEventListener("click", (e) => {
+          e.stopPropagation();
+          tryUnlock();
+        });
+        pwdIn.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
+            tryUnlock();
+          }
+        });
+        pwdIn.addEventListener("click", (e) => e.stopPropagation());
+        form.appendChild(title);
+        form.appendChild(pwdIn);
+        form.appendChild(submit);
+        form.appendChild(err);
+        hit.appendChild(form);
+      } else {
+        hit.appendChild(title);
+        hit.addEventListener("click", () => {
+          state.confirmations[task.id] = true;
+          const allDone = state.tasks.every((t) => state.confirmations[t.id] === true);
+          if (allDone) {
+            state.phase = "done";
+          }
+          render();
+        });
+      }
 
       panel.appendChild(inner);
-      panel.appendChild(btn);
+      panel.appendChild(hit);
       root.appendChild(panel);
     });
 
@@ -294,6 +439,7 @@
   }
 
   loadHistory();
+  loadConfirmerMode();
   render();
 
   window.addEventListener("resize", () => {
