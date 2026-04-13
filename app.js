@@ -515,7 +515,8 @@
     appEl.appendChild(root);
   }
 
-  function attachDoneFireworks(container) {
+  /** 完了画面の背景演出（約10種からランダム） */
+  function attachDoneCelebration(container) {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const canvas = document.createElement("canvas");
@@ -526,37 +527,56 @@
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const colors = ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#c77dff", "#ff9ff3", "#ffa94d", "#69db7c"];
+    const PAL = [
+      "#ff6b6b",
+      "#ffd93d",
+      "#6bcb77",
+      "#4d96ff",
+      "#c77dff",
+      "#ff9ff3",
+      "#ffa94d",
+      "#69db7c",
+      "#20c997",
+      "#fd7e14",
+    ];
+
+    const pattern = Math.floor(Math.random() * 10);
 
     let W = 0;
     let H = 0;
-    /** @type {Array<{rocket?:boolean,x:number,y:number,vx:number,vy:number,life?:number,decay?:number,color:string,size?:number}>} */
-    const particles = [];
-
-    function resize() {
+    const ro = new ResizeObserver(() => {
+      const r = container.getBoundingClientRect();
+      W = Math.max(1, Math.floor(r.width));
+      H = Math.max(1, Math.floor(r.height));
+      canvas.width = W;
+      canvas.height = H;
+    });
+    ro.observe(container);
+    {
       const r = container.getBoundingClientRect();
       W = Math.max(1, Math.floor(r.width));
       H = Math.max(1, Math.floor(r.height));
       canvas.width = W;
       canvas.height = H;
     }
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(container);
+
+    /** @type {{ particles?: any[], confetti?: any[], bubbles?: any[], stars?: any[], hearts?: any[], meteors?: any[], spiral?: number, sparkles?: any[], balloons?: any[], spawn?: number, nextSpawn?: number, wave?: number }} */
+    const acc = { particles: [], spawn: 0, nextSpawn: 400 };
 
     function burst(x, y) {
-      const n = 48 + Math.floor(Math.random() * 28);
+      const n = 44 + Math.floor(Math.random() * 24);
       for (let i = 0; i < n; i++) {
         const a = (Math.PI * 2 * i) / n + Math.random() * 0.4;
         const sp = 2.2 + Math.random() * 4.2;
-        particles.push({
+        acc.particles.push({
+          kind: "dot",
           x,
           y,
           vx: Math.cos(a) * sp,
           vy: Math.sin(a) * sp,
           life: 1,
           decay: 0.01 + Math.random() * 0.012,
-          color: colors[Math.floor(Math.random() * colors.length)],
+          color: PAL[Math.floor(Math.random() * PAL.length)],
           size: 1.5 + Math.random() * 2.2,
         });
       }
@@ -564,19 +584,59 @@
 
     function launchRocket() {
       const x = W * (0.12 + Math.random() * 0.76);
-      particles.push({
-        rocket: true,
+      acc.particles.push({
+        kind: "rocket",
         x,
         y: H + 8,
         vx: (Math.random() - 0.5) * 1.4,
         vy: -(9 + Math.random() * 4),
-        color: colors[Math.floor(Math.random() * colors.length)],
+        color: PAL[Math.floor(Math.random() * PAL.length)],
       });
     }
 
+    function initPattern() {
+      acc.particles = [];
+      acc.spawn = 0;
+      acc.nextSpawn = 400;
+      acc.wave = 0;
+      acc.spiral = 0;
+      if (pattern === 1) acc.confetti = [];
+      if (pattern === 2) acc.bubbles = [];
+      if (pattern === 3) acc.stars = [];
+      if (pattern === 4) acc.hearts = [];
+      if (pattern === 5) acc.meteors = [];
+      if (pattern === 8) acc.sparkles = [];
+      if (pattern === 9) acc.balloons = [];
+    }
+
+    initPattern();
+
     let last = 0;
-    let spawnAcc = 0;
-    let nextSpawn = 400;
+
+    function ensureArrays() {
+      if (pattern === 3 && acc.stars && acc.stars.length === 0 && W > 10 && H > 10) {
+        for (let i = 0; i < 48; i++) {
+          acc.stars.push({
+            x: Math.random() * W,
+            y: Math.random() * H,
+            phase: Math.random() * Math.PI * 2,
+            sp: 0.4 + Math.random() * 1.2,
+            r: 1 + Math.random() * 2,
+          });
+        }
+      }
+      if (pattern === 8 && acc.sparkles && acc.sparkles.length === 0 && W > 10 && H > 10) {
+        for (let i = 0; i < 36; i++) {
+          acc.sparkles.push({
+            x: Math.random() * W,
+            y: Math.random() * H,
+            phase: Math.random() * Math.PI * 2,
+            size: 4 + Math.random() * 8,
+            color: PAL[Math.floor(Math.random() * PAL.length)],
+          });
+        }
+      }
+    }
 
     function frame(t) {
       if (!canvas.isConnected) {
@@ -587,47 +647,287 @@
       last = t;
 
       ctx.clearRect(0, 0, W, H);
+      ensureArrays();
 
-      spawnAcc += dt;
-      if (spawnAcc >= nextSpawn) {
-        spawnAcc = 0;
-        nextSpawn = 650 + Math.random() * 900;
-        if (W > 40 && H > 40) launchRocket();
-      }
-
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        if (p.rocket) {
-          p.x += p.vx;
-          p.y += p.vy;
-          p.vy += 0.18;
+      if (pattern === 0) {
+        acc.spawn += dt;
+        if (acc.spawn >= acc.nextSpawn) {
+          acc.spawn = 0;
+          acc.nextSpawn = 650 + Math.random() * 900;
+          if (W > 40 && H > 40) launchRocket();
+        }
+        for (let i = acc.particles.length - 1; i >= 0; i--) {
+          const p = acc.particles[i];
+          if (p.kind === "rocket") {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.18;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 3.2, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+            if (p.vy >= -0.2 || p.y < H * 0.16) {
+              burst(p.x, p.y);
+              acc.particles.splice(i, 1);
+            }
+          } else if (p.kind === "dot") {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.1;
+            p.life -= p.decay;
+            if (p.life <= 0) {
+              acc.particles.splice(i, 1);
+              continue;
+            }
+            ctx.globalAlpha = Math.max(0, p.life);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+        }
+      } else if (pattern === 1) {
+        if (W > 20 && Math.random() < 0.08 * (dt / 16)) {
+          acc.confetti.push({
+            x: Math.random() * W,
+            y: -12,
+            w: 5 + Math.random() * 6,
+            h: 8 + Math.random() * 8,
+            vy: 1.5 + Math.random() * 3,
+            vx: (Math.random() - 0.5) * 2,
+            rot: Math.random() * Math.PI,
+            vr: (Math.random() - 0.5) * 0.15,
+            color: PAL[Math.floor(Math.random() * PAL.length)],
+          });
+        }
+        for (let i = acc.confetti.length - 1; i >= 0; i--) {
+          const c = acc.confetti[i];
+          c.x += c.vx;
+          c.y += c.vy;
+          c.vy += 0.04;
+          c.rot += c.vr;
+          if (c.y > H + 20) acc.confetti.splice(i, 1);
+          else {
+            ctx.save();
+            ctx.translate(c.x, c.y);
+            ctx.rotate(c.rot);
+            ctx.fillStyle = c.color;
+            ctx.globalAlpha = 0.85;
+            ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h);
+            ctx.restore();
+            ctx.globalAlpha = 1;
+          }
+        }
+      } else if (pattern === 2) {
+        if (W > 20 && Math.random() < 0.06 * (dt / 16)) {
+          acc.bubbles.push({
+            x: Math.random() * W,
+            y: H + 20,
+            r: 12 + Math.random() * 28,
+            vy: -(1.2 + Math.random() * 2),
+            vx: (Math.random() - 0.5) * 0.8,
+            wobble: Math.random() * Math.PI * 2,
+            color: PAL[Math.floor(Math.random() * PAL.length)],
+          });
+        }
+        for (let i = acc.bubbles.length - 1; i >= 0; i--) {
+          const b = acc.bubbles[i];
+          b.wobble += 0.04;
+          b.x += b.vx + Math.sin(b.wobble) * 0.4;
+          b.y += b.vy;
+          if (b.y < -40) acc.bubbles.splice(i, 1);
+          else {
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+            ctx.strokeStyle = b.color;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.45;
+            ctx.stroke();
+            ctx.globalAlpha = 0.12;
+            ctx.fillStyle = b.color;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+        }
+      } else if (pattern === 3 && acc.stars) {
+        const time = t * 0.002;
+        for (const s of acc.stars) {
+          const a = 0.35 + 0.65 * Math.sin(time * s.sp + s.phase);
+          ctx.globalAlpha = a;
+          ctx.fillStyle = "#fff";
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 3.2, 0, Math.PI * 2);
-          ctx.fillStyle = p.color;
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
           ctx.fill();
-          if (p.vy >= -0.2 || p.y < H * 0.16) {
-            burst(p.x, p.y);
-            particles.splice(i, 1);
+        }
+        ctx.globalAlpha = 1;
+      } else if (pattern === 4) {
+        if (W > 20 && Math.random() < 0.05 * (dt / 16)) {
+          acc.hearts.push({
+            x: Math.random() * W,
+            y: -20,
+            vy: 1 + Math.random() * 2,
+            vx: (Math.random() - 0.5) * 1.2,
+            size: 14 + Math.random() * 18,
+            color: PAL[Math.floor(Math.random() * PAL.length)],
+          });
+        }
+        for (let i = acc.hearts.length - 1; i >= 0; i--) {
+          const h = acc.hearts[i];
+          h.x += h.vx;
+          h.y += h.vy;
+          if (h.y > H + 30) acc.hearts.splice(i, 1);
+          else {
+            ctx.font = `${h.size}px system-ui, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = h.color;
+            ctx.globalAlpha = 0.75;
+            ctx.fillText("♥", h.x, h.y);
+            ctx.globalAlpha = 1;
           }
-        } else {
+        }
+      } else if (pattern === 5) {
+        if (W > 40 && Math.random() < 0.04 * (dt / 16)) {
+          acc.meteors.push({
+            x: W + 40,
+            y: Math.random() * H * 0.5,
+            vx: -(8 + Math.random() * 10),
+            vy: 3 + Math.random() * 5,
+            len: 40 + Math.random() * 50,
+            alpha: 0.7,
+          });
+        }
+        for (let i = acc.meteors.length - 1; i >= 0; i--) {
+          const m = acc.meteors[i];
+          m.x += m.vx * (dt / 16);
+          m.y += m.vy * (dt / 16);
+          if (m.x < -80) acc.meteors.splice(i, 1);
+          else {
+            const ang = Math.atan2(m.vy, m.vx);
+            const x2 = m.x - Math.cos(ang) * m.len;
+            const y2 = m.y - Math.sin(ang) * m.len;
+            const g = ctx.createLinearGradient(m.x, m.y, x2, y2);
+            g.addColorStop(0, "rgba(255,255,255,0.95)");
+            g.addColorStop(0.3, "rgba(200,220,255,0.6)");
+            g.addColorStop(1, "rgba(100,150,255,0)");
+            ctx.strokeStyle = g;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(m.x, m.y);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+          }
+        }
+      } else if (pattern === 6) {
+        acc.spiral = (acc.spiral || 0) + 0.045 * (dt / 16);
+        const cx = W * 0.5;
+        const cy = H * 0.45;
+        for (let k = 0; k < 3; k++) {
+          const a = acc.spiral + (k * Math.PI * 2) / 3;
+          const dist = 40 + ((t * 0.05 + k * 40) % (Math.min(W, H) * 0.35));
+          const x = cx + Math.cos(a) * dist;
+          const y = cy + Math.sin(a) * dist * 0.6;
+          ctx.beginPath();
+          ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = PAL[(Math.floor(t / 50) + k) % PAL.length];
+          ctx.globalAlpha = 0.85;
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        if (Math.random() < 0.2) {
+          const a = Math.random() * Math.PI * 2;
+          const sp = 2 + Math.random() * 3;
+          acc.particles.push({
+            kind: "dot",
+            x: cx,
+            y: cy,
+            vx: Math.cos(a) * sp,
+            vy: Math.sin(a) * sp,
+            life: 1,
+            decay: 0.015,
+            color: PAL[Math.floor(Math.random() * PAL.length)],
+            size: 2 + Math.random() * 2,
+          });
+        }
+        for (let i = acc.particles.length - 1; i >= 0; i--) {
+          const p = acc.particles[i];
           p.x += p.vx;
           p.y += p.vy;
-          p.vy += 0.1;
-          if (p.life === undefined || p.decay === undefined) {
-            particles.splice(i, 1);
-            continue;
-          }
           p.life -= p.decay;
-          if (p.life <= 0 || p.size === undefined) {
-            particles.splice(i, 1);
-            continue;
+          if (p.life <= 0) acc.particles.splice(i, 1);
+          else {
+            ctx.globalAlpha = p.life;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+            ctx.globalAlpha = 1;
           }
-          ctx.globalAlpha = Math.max(0, p.life);
+        }
+      } else if (pattern === 7) {
+        acc.wave = (acc.wave || 0) + 0.002 * dt;
+        const lines = 5;
+        for (let L = 0; L < lines; L++) {
+          const yBase = (H / (lines + 1)) * (L + 1);
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-          ctx.fillStyle = p.color;
-          ctx.fill();
-          ctx.globalAlpha = 1;
+          ctx.moveTo(0, yBase);
+          for (let x = 0; x <= W; x += 6) {
+            const y = yBase + Math.sin(x * 0.015 + acc.wave + L) * (12 + L * 4);
+            ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = PAL[L % PAL.length];
+          ctx.globalAlpha = 0.35;
+          ctx.lineWidth = 4;
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      } else if (pattern === 8 && acc.sparkles) {
+        const time = t * 0.003;
+        for (const s of acc.sparkles) {
+          const a = 0.2 + 0.8 * Math.sin(time * 2 + s.phase);
+          ctx.globalAlpha = a;
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = 2;
+          const z = s.size;
+          ctx.beginPath();
+          ctx.moveTo(s.x - z, s.y);
+          ctx.lineTo(s.x + z, s.y);
+          ctx.moveTo(s.x, s.y - z);
+          ctx.lineTo(s.x, s.y + z);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      } else if (pattern === 9) {
+        if (W > 20 && Math.random() < 0.035 * (dt / 16)) {
+          acc.balloons.push({
+            x: Math.random() * W,
+            y: H + 30,
+            r: 14 + Math.random() * 16,
+            vy: -(1.5 + Math.random() * 2),
+            vx: (Math.random() - 0.5) * 0.6,
+            color: PAL[Math.floor(Math.random() * PAL.length)],
+          });
+        }
+        for (let i = acc.balloons.length - 1; i >= 0; i--) {
+          const b = acc.balloons[i];
+          b.x += b.vx;
+          b.y += b.vy;
+          if (b.y < -50) acc.balloons.splice(i, 1);
+          else {
+            ctx.beginPath();
+            ctx.ellipse(b.x, b.y, b.r * 0.85, b.r, 0, 0, Math.PI * 2);
+            ctx.fillStyle = b.color;
+            ctx.globalAlpha = 0.55;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.beginPath();
+            ctx.moveTo(b.x, b.y + b.r);
+            ctx.lineTo(b.x - 4, b.y + b.r + 22);
+            ctx.strokeStyle = "rgba(0,0,0,0.25)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
         }
       }
 
@@ -666,7 +966,7 @@
     inner.appendChild(back);
     wrap.appendChild(inner);
     appEl.appendChild(wrap);
-    attachDoneFireworks(wrap);
+    attachDoneCelebration(wrap);
   }
 
   loadHistory();
