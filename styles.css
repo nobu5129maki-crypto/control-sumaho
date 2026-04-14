@@ -19,33 +19,6 @@ body {
     sans-serif;
 }
 
-/* 設定「上スワイプで画面がずれにくくする」: オーバースクロール連鎖・Pull-to-refresh 抑止（環境により効き方は異なります） */
-html.lock-overscroll {
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
-}
-
-html.lock-overscroll body {
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
-}
-
-html.lock-overscroll #app {
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
-}
-
-html.lock-overscroll .view-blocked,
-html.lock-overscroll .view-set-password,
-html.lock-overscroll .view-done {
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
-}
-
-html.lock-overscroll .task-list {
-  overscroll-behavior: contain;
-}
-
 #app {
   min-height: 100%;
   height: 100%;
@@ -215,23 +188,6 @@ html.lock-overscroll .task-list {
 
 .mode-switch:active {
   opacity: 0.92;
-}
-
-.mode-row--multiline {
-  align-items: flex-start;
-}
-
-.mode-row-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.mode-hint {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.38;
-  color: #868e96;
-  font-weight: 400;
 }
 
 .list-row {

@@ -1,4 +1,4 @@
-const CACHE = "control-sumaho-v1";
+const CACHE = "control-sumaho-v2";
 
 const PRECACHE_URLS = [
   "./index.html",
@@ -22,7 +22,14 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(keys.map((k) => (k === CACHE ? Promise.resolve() : caches.delete(k))))
+      )
+      .then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener("fetch", (event) => {

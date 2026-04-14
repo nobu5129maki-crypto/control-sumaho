@@ -3,7 +3,6 @@
 
   const TITLE_HISTORY_KEY = "yarubekikoto_title_history_v1";
   const CONFIRMER_MODE_KEY = "yarubekikoto_confirmer_mode_v1";
-  const LOCK_OVERSCROLL_KEY = "yarubekikoto_lock_overscroll_v1";
   const MAX_TITLE_HISTORY = 50;
 
   const SEGMENT_GRADIENTS = [
@@ -41,11 +40,10 @@
     return s.replace(/\D/g, "").slice(0, CONFIRMER_PIN_LEN);
   }
 
-  /** @type {{ phase: 'edit'|'setPassword'|'blocked'|'done', confirmPasswordMode: boolean, lockOverscroll: boolean, confirmerSecret: string, tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
+  /** @type {{ phase: 'edit'|'setPassword'|'blocked'|'done', confirmPasswordMode: boolean, confirmerSecret: string, tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
   const state = {
     phase: "edit",
     confirmPasswordMode: false,
-    lockOverscroll: false,
     confirmerSecret: "",
     tasks: [],
     titleHistory: [],
@@ -67,27 +65,6 @@
     } catch (_) {
       /* ignore */
     }
-  }
-
-  function loadLockOverscroll() {
-    try {
-      const raw = localStorage.getItem(LOCK_OVERSCROLL_KEY);
-      state.lockOverscroll = raw === "1";
-    } catch (_) {
-      state.lockOverscroll = false;
-    }
-  }
-
-  function saveLockOverscroll() {
-    try {
-      localStorage.setItem(LOCK_OVERSCROLL_KEY, state.lockOverscroll ? "1" : "0");
-    } catch (_) {
-      /* ignore */
-    }
-  }
-
-  function applyLockOverscrollClass() {
-    document.documentElement.classList.toggle("lock-overscroll", state.lockOverscroll);
   }
 
   const appEl = document.getElementById("app");
@@ -184,38 +161,6 @@
     });
     modeRow.appendChild(modeLabel);
     modeRow.appendChild(modeSwitch);
-
-    const lockRow = document.createElement("div");
-    lockRow.className = "mode-row mode-row--multiline";
-    const lockTextCol = document.createElement("div");
-    lockTextCol.className = "mode-row-text";
-    const lockLabel = document.createElement("span");
-    lockLabel.className = "mode-label";
-    lockLabel.textContent = "上スワイプで画面がずれにくくする";
-    const lockHint = document.createElement("p");
-    lockHint.className = "mode-hint";
-    lockHint.textContent =
-      "Pull で更新や端末の余白が出るのを抑えます。ブラウザや OS によっては効かないことがあります。ホームや戻る操作は止められません。";
-    lockTextCol.appendChild(lockLabel);
-    lockTextCol.appendChild(lockHint);
-    const lockSwitch = document.createElement("button");
-    lockSwitch.type = "button";
-    lockSwitch.className = "mode-switch";
-    lockSwitch.setAttribute("role", "switch");
-    lockSwitch.setAttribute("aria-checked", state.lockOverscroll ? "true" : "false");
-    lockSwitch.setAttribute("aria-label", "上スワイプで画面がずれにくくする");
-    const lockKnob = document.createElement("span");
-    lockKnob.className = "mode-switch-knob";
-    lockSwitch.appendChild(lockKnob);
-    if (state.lockOverscroll) lockSwitch.classList.add("is-on");
-    lockSwitch.addEventListener("click", () => {
-      state.lockOverscroll = !state.lockOverscroll;
-      saveLockOverscroll();
-      applyLockOverscrollClass();
-      render();
-    });
-    lockRow.appendChild(lockTextCol);
-    lockRow.appendChild(lockSwitch);
 
     const input = document.createElement("input");
     input.type = "text";
@@ -340,7 +285,6 @@
     wrap.appendChild(h1);
     wrap.appendChild(sub);
     wrap.appendChild(modeRow);
-    wrap.appendChild(lockRow);
     wrap.appendChild(input);
     rebuildChips();
     wrap.appendChild(addBtn);
@@ -1053,8 +997,6 @@
 
   loadHistory();
   loadConfirmerMode();
-  loadLockOverscroll();
-  applyLockOverscrollClass();
   render();
 
   let lastLayoutWidth = window.innerWidth;
