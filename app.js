@@ -135,7 +135,7 @@
     function syncSubText() {
       sub.textContent = state.confirmPasswordMode
         ? "確認者は次の「パスワードを決める」画面で4桁の数字を決めます。そのあと画面が覆われ、各帯で同じ4桁を入力して解除します。"
-        : "完了するまで画面がカラフルなパネルで覆われます。項目をタップするとその帯だけ外れ、下の画面が見えます。";
+        : "完了するまで画面がカラフルなパネルで覆われます。項目をタップするとその帯だけ消えます。";
     }
     syncSubText();
 
@@ -974,7 +974,7 @@
 
     const body = document.createElement("p");
     body.className = "done-body";
-    body.textContent = "パネルをすべて外しました。スマホを使って大丈夫です。";
+    body.textContent = "お疲れ様でした。スマホを使って少し休憩しましょう。";
 
     const back = document.createElement("button");
     back.type = "button";
