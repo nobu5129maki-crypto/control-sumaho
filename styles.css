@@ -327,13 +327,20 @@ body {
   z-index: 100;
   background: #111;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 帯を敷く領域（バナーの下の残り全部） */
+.panel-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
 .blocked-confirmer-banner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative;
+  flex: none;
   z-index: 200;
   padding: max(10px, env(safe-area-inset-top)) 14px 10px;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.55) 100%);
@@ -395,70 +402,108 @@ body {
   font-weight: 700;
   text-align: center;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-}
-
-.panel-hit--password {
-  cursor: default;
-  align-items: center;
-  justify-content: center;
-}
-
-.panel-password-form {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
-  width: min(92%, 320px);
+  overflow-wrap: anywhere;
   max-width: 100%;
 }
 
-.panel-password-form .panel-title {
-  margin-bottom: 2px;
+.panel-hit--password {
+  flex-direction: column;
+  gap: 4px;
 }
 
-.panel-password-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
-  text-align: center;
+.panel-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-.panel-password-input {
+/* 確認者モードの PIN 入力ダイアログ（帯をタップすると開く） */
+.unlock-dialog {
+  position: absolute;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.unlock-dialog-box {
+  width: min(100%, 340px);
+  padding: 20px 18px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.unlock-dialog-title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #212529;
+  text-align: center;
+  word-break: break-word;
+}
+
+.unlock-dialog-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #495057;
+}
+
+.unlock-dialog-input {
   width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  border: 1px solid #ced4da;
   border-radius: 10px;
   padding: 12px 14px;
-  font-size: 16px;
-  background: rgba(0, 0, 0, 0.25);
-  color: #fff;
-}
-
-.panel-password-input::placeholder {
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.panel-password-submit {
-  padding: 12px 16px;
-  border: none;
-  border-radius: 10px;
+  font-size: 22px;
+  letter-spacing: 0.35em;
   background: #fff;
   color: #212529;
+}
+
+.unlock-dialog-err {
+  margin: 0;
+  font-size: 13px;
+  color: #c92a2a;
+  text-align: center;
+}
+
+.unlock-dialog-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.unlock-dialog-cancel,
+.unlock-dialog-submit {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 10px;
   font-weight: 700;
   font-size: 16px;
   cursor: pointer;
 }
 
-.panel-password-submit:active {
-  opacity: 0.9;
+.unlock-dialog-cancel {
+  border: 1px solid #ced4da;
+  background: #fff;
+  color: #495057;
 }
 
-.panel-password-err {
-  margin: 0;
-  font-size: 13px;
-  color: #ffe3e3;
-  text-align: center;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+.unlock-dialog-submit {
+  border: none;
+  background: #212529;
+  color: #fff;
+}
+
+.unlock-dialog-cancel:active,
+.unlock-dialog-submit:active {
+  opacity: 0.9;
 }
 
 /* ----- 完了 ----- */

@@ -3,6 +3,8 @@
 
   const TITLE_HISTORY_KEY = "yarubekikoto_title_history_v1";
   const CONFIRMER_MODE_KEY = "yarubekikoto_confirmer_mode_v1";
+  // 作業中の状態（項目・覆い中かどうか・解除済み・PIN）。リロードやアプリ再起動で覆いが外れないように保存する
+  const SESSION_KEY = "yarubekikoto_session_v1";
   const MAX_TITLE_HISTORY = 50;
 
   const SEGMENT_GRADIENTS = [
@@ -40,7 +42,7 @@
     return s.replace(/\D/g, "").slice(0, CONFIRMER_PIN_LEN);
   }
 
-  /** @type {{ phase: 'edit'|'setPassword'|'blocked'|'done', confirmPasswordMode: boolean, confirmerSecret: string, tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean> }} */
+  /** @type {{ phase: 'edit'|'setPassword'|'blocked'|'done', confirmPasswordMode: boolean, confirmerSecret: string, tasks: {id:string,title:string}[], titleHistory: string[], confirmations: Record<string,boolean>, draft: string }} */
   const state = {
     phase: "edit",
     confirmPasswordMode: false,
@@ -48,7 +50,70 @@
     tasks: [],
     titleHistory: [],
     confirmations: {},
+    // 入力欄の下書き（モード切替などで再描画しても消えないように保持）
+    draft: "",
   };
+
+  function saveSession() {
+    try {
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          phase: state.phase,
+          tasks: state.tasks,
+          confirmations: state.confirmations,
+          confirmerSecret: state.confirmerSecret,
+        })
+      );
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function loadSession() {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (!s || typeof s !== "object") return;
+      const tasks = Array.isArray(s.tasks)
+        ? s.tasks.filter(
+            (t) => t && typeof t.id === "string" && typeof t.title === "string" && t.title.trim()
+          )
+        : [];
+      state.tasks = tasks;
+      const confirmations = s.confirmations && typeof s.confirmations === "object" ? s.confirmations : {};
+      state.confirmations = {};
+      tasks.forEach((t) => {
+        state.confirmations[t.id] = confirmations[t.id] === true;
+      });
+      const secret = typeof s.confirmerSecret === "string" ? s.confirmerSecret : "";
+
+      if (s.phase === "blocked" && tasks.length > 0) {
+        // 覆い中に閉じられた／リロードされた場合は覆いを復元する
+        const allDone = tasks.every((t) => state.confirmations[t.id] === true);
+        if (allDone) {
+          state.phase = "done";
+          return;
+        }
+        state.phase = "blocked";
+        if (isValidConfirmerPin(secret)) {
+          state.confirmerSecret = secret;
+          state.confirmPasswordMode = true;
+        } else {
+          // PIN が無い（タップ解除モード）で覆われていた
+          state.confirmerSecret = "";
+          state.confirmPasswordMode = false;
+        }
+        return;
+      }
+      // setPassword / done / edit は編集画面に戻す（項目は残す）
+      state.phase = "edit";
+      state.confirmerSecret = "";
+    } catch (_) {
+      /* ignore */
+    }
+  }
 
   function loadConfirmerMode() {
     try {
@@ -106,6 +171,7 @@
   }
 
   function render() {
+    saveSession();
     appEl.innerHTML = "";
     if (state.phase === "blocked") {
       renderBlocked();
@@ -134,7 +200,7 @@
     sub.className = "edit-sub";
     function syncSubText() {
       sub.textContent = state.confirmPasswordMode
-        ? "確認者は次の「パスワードを決める」画面で4桁の数字を決めます。そのあと画面が覆われ、各帯で同じ4桁を入力して解除します。"
+        ? "確認者は次の「パスワードを決める」画面で4桁の数字を決めます。そのあと画面が覆われ、帯をタップして同じ4桁を入力すると解除できます。"
         : "完了するまで画面がカラフルなパネルで覆われます。項目をタップするとその帯だけ消えます。";
     }
     syncSubText();
@@ -167,6 +233,7 @@
     input.className = "input";
     input.placeholder = "やるべきこと（項目）";
     input.autocomplete = "off";
+    input.value = state.draft;
 
     let historyBlock = null;
 
@@ -207,7 +274,10 @@
       });
     }
 
-    input.addEventListener("input", rebuildChips);
+    input.addEventListener("input", () => {
+      state.draft = input.value;
+      rebuildChips();
+    });
 
     const addBtn = document.createElement("button");
     addBtn.type = "button";
@@ -219,6 +289,7 @@
       state.tasks.push({ id: newId(), title });
       pushTitleHistory(title);
       input.value = "";
+      state.draft = "";
       rebuildChips();
       render();
     });
@@ -359,7 +430,7 @@
     const goBtn = document.createElement("button");
     goBtn.type = "button";
     goBtn.className = "start-btn";
-    goBtn.textContent = "画面を覆る";
+    goBtn.textContent = "画面を覆う";
     function syncGo() {
       goBtn.disabled = !isValidConfirmerPin(state.confirmerSecret);
     }
@@ -422,11 +493,130 @@
       line1.textContent = "パスワードは4桁の数字です。";
       const line2 = document.createElement("p");
       line2.className = "blocked-confirmer-banner-text";
-      line2.textContent = "確認者は、決めた4桁を各帯の入力欄に入れて解除してください。";
+      line2.textContent = "確認者は、帯をタップして決めた4桁を入力すると解除できます。";
       bannerInner.appendChild(line1);
       bannerInner.appendChild(line2);
       banner.appendChild(bannerInner);
       root.appendChild(banner);
+    }
+
+    // 帯はバナーの下の領域（panel-area）に敷く。以前はバナーが最初の帯に重なって項目名が隠れていた
+    const area = document.createElement("div");
+    area.className = "panel-area";
+    root.appendChild(area);
+
+    function completeTask(task) {
+      state.confirmations[task.id] = true;
+      const allDone = state.tasks.every((t) => state.confirmations[t.id] === true);
+      if (allDone) {
+        state.phase = "done";
+      }
+      render();
+    }
+
+    /**
+     * 確認者モードの PIN 入力ダイアログ。
+     * 以前は各帯の中に入力欄とボタンを直接置いていたため、項目が4つ以上あるスマホ画面では
+     * 帯の高さに収まらず「解除」ボタンが切れて押せなかった。帯をタップしたらダイアログを開く方式に変更。
+     */
+    function openUnlockDialog(task) {
+      const existing = root.querySelector(".unlock-dialog");
+      if (existing) existing.remove();
+
+      const overlay = document.createElement("div");
+      overlay.className = "unlock-dialog";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+      overlay.setAttribute("aria-label", `パスワードで解除: ${task.title}`);
+
+      const box = document.createElement("div");
+      box.className = "unlock-dialog-box";
+
+      const title = document.createElement("p");
+      title.className = "unlock-dialog-title";
+      title.textContent = task.title;
+
+      const lbl = document.createElement("label");
+      lbl.className = "unlock-dialog-label";
+      lbl.textContent = "確認者のパスワード（4桁の数字）";
+      const pwdIn = document.createElement("input");
+      pwdIn.type = "password";
+      pwdIn.className = "unlock-dialog-input";
+      pwdIn.id = `confirmer-pwd-${task.id}`;
+      pwdIn.inputMode = "numeric";
+      pwdIn.maxLength = CONFIRMER_PIN_LEN;
+      pwdIn.placeholder = "4桁の数字";
+      pwdIn.autocomplete = "off";
+      pwdIn.enterKeyHint = "done";
+      lbl.setAttribute("for", pwdIn.id);
+      let composing = false;
+      pwdIn.addEventListener("compositionstart", () => {
+        composing = true;
+      });
+      pwdIn.addEventListener("compositionend", () => {
+        composing = false;
+        pwdIn.value = sanitizePinInput(pwdIn.value);
+      });
+      pwdIn.addEventListener("input", () => {
+        if (composing) return;
+        pwdIn.value = sanitizePinInput(pwdIn.value);
+      });
+
+      const err = document.createElement("p");
+      err.className = "unlock-dialog-err hidden";
+      err.setAttribute("aria-live", "polite");
+
+      const actions = document.createElement("div");
+      actions.className = "unlock-dialog-actions";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "unlock-dialog-cancel";
+      cancel.textContent = "キャンセル";
+      const submit = document.createElement("button");
+      submit.type = "button";
+      submit.className = "unlock-dialog-submit";
+      submit.textContent = "解除";
+
+      function close() {
+        overlay.remove();
+      }
+      function tryUnlock() {
+        const got = sanitizePinInput(pwdIn.value);
+        if (!isValidConfirmerPin(got) || got !== state.confirmerSecret) {
+          err.textContent = "4桁の数字が違います";
+          err.classList.remove("hidden");
+          pwdIn.select();
+          pwdIn.focus();
+          return;
+        }
+        close();
+        completeTask(task);
+      }
+      cancel.addEventListener("click", close);
+      submit.addEventListener("click", tryUnlock);
+      pwdIn.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          tryUnlock();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          close();
+        }
+      });
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) close();
+      });
+
+      actions.appendChild(cancel);
+      actions.appendChild(submit);
+      box.appendChild(title);
+      box.appendChild(lbl);
+      box.appendChild(pwdIn);
+      box.appendChild(err);
+      box.appendChild(actions);
+      overlay.appendChild(box);
+      root.appendChild(overlay);
+      pwdIn.focus();
     }
 
     state.tasks.forEach((task, index) => {
@@ -445,10 +635,8 @@
       inner.className = "panel-inner";
       inner.style.background = `linear-gradient(135deg, ${c0}, ${c1})`;
 
-      const hit = state.confirmPasswordMode ? document.createElement("div") : document.createElement("button");
-      if (!state.confirmPasswordMode) {
-        hit.type = "button";
-      }
+      const hit = document.createElement("button");
+      hit.type = "button";
       hit.className = "panel-hit";
       hit.setAttribute(
         "aria-label",
@@ -458,84 +646,22 @@
       const title = document.createElement("p");
       title.className = "panel-title";
       title.textContent = task.title;
+      hit.appendChild(title);
 
       if (state.confirmPasswordMode) {
         hit.classList.add("panel-hit--password");
-        const form = document.createElement("div");
-        form.className = "panel-password-form";
-        const err = document.createElement("p");
-        err.className = "panel-password-err hidden";
-        err.setAttribute("aria-live", "polite");
-        const pwdLbl = document.createElement("label");
-        pwdLbl.className = "panel-password-label";
-        pwdLbl.textContent = "確認者のパスワード（4桁の数字）";
-        const pwdIn = document.createElement("input");
-        pwdIn.type = "password";
-        pwdIn.className = "panel-password-input";
-        pwdIn.id = `confirmer-pwd-${task.id}`;
-        pwdIn.inputMode = "numeric";
-        pwdIn.maxLength = CONFIRMER_PIN_LEN;
-        pwdIn.placeholder = "4桁の数字";
-        pwdIn.autocomplete = "off";
-        pwdIn.addEventListener("input", () => {
-          pwdIn.value = sanitizePinInput(pwdIn.value);
-        });
-        pwdLbl.setAttribute("for", pwdIn.id);
-        const submit = document.createElement("button");
-        submit.type = "button";
-        submit.className = "panel-password-submit";
-        submit.textContent = "解除";
-
-        function tryUnlock() {
-          const expected = state.confirmerSecret;
-          const got = sanitizePinInput(pwdIn.value);
-          if (!isValidConfirmerPin(got) || got !== expected) {
-            err.textContent = "4桁の数字が違います";
-            err.classList.remove("hidden");
-            pwdIn.select();
-            return;
-          }
-          err.classList.add("hidden");
-          state.confirmations[task.id] = true;
-          const allDone = state.tasks.every((t) => state.confirmations[t.id] === true);
-          if (allDone) {
-            state.phase = "done";
-          }
-          render();
-        }
-        submit.addEventListener("click", (e) => {
-          e.stopPropagation();
-          tryUnlock();
-        });
-        pwdIn.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            e.stopPropagation();
-            tryUnlock();
-          }
-        });
-        pwdIn.addEventListener("click", (e) => e.stopPropagation());
-        form.appendChild(title);
-        form.appendChild(pwdLbl);
-        form.appendChild(pwdIn);
-        form.appendChild(submit);
-        form.appendChild(err);
-        hit.appendChild(form);
+        const hint = document.createElement("span");
+        hint.className = "panel-hint";
+        hint.textContent = "タップしてパスワードで解除";
+        hit.appendChild(hint);
+        hit.addEventListener("click", () => openUnlockDialog(task));
       } else {
-        hit.appendChild(title);
-        hit.addEventListener("click", () => {
-          state.confirmations[task.id] = true;
-          const allDone = state.tasks.every((t) => state.confirmations[t.id] === true);
-          if (allDone) {
-            state.phase = "done";
-          }
-          render();
-        });
+        hit.addEventListener("click", () => completeTask(task));
       }
 
       panel.appendChild(inner);
       panel.appendChild(hit);
-      root.appendChild(panel);
+      area.appendChild(panel);
     });
 
     appEl.appendChild(root);
@@ -997,6 +1123,7 @@
 
   loadHistory();
   loadConfirmerMode();
+  loadSession();
   render();
 
   let lastLayoutWidth = window.innerWidth;

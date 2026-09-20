@@ -1,4 +1,5 @@
-const CACHE = "control-sumaho-v2";
+// 更新のたびにバージョンを上げる（古いキャッシュを捨てるため）
+const CACHE = "control-sumaho-v3";
 
 const PRECACHE_URLS = [
   "./index.html",
@@ -33,13 +34,29 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match("./index.html"))
-    );
+  const req = event.request;
+  if (req.method !== "GET") return;
+
+  if (req.mode === "navigate") {
+    event.respondWith(fetch(req).catch(() => caches.match("./index.html")));
     return;
   }
+
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  // 同一オリジンの JS/CSS などはネットワーク優先（取れたらキャッシュも更新）、オフライン時だけキャッシュ。
+  // 以前はキャッシュ優先だったため、修正版を配信しても古い app.js / styles.css が使われ続けていた。
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    // cache: "no-cache" でブラウザの HTTP キャッシュを使わずサーバーに確認させる（更新漏れ防止）
+    fetch(req, { cache: "no-cache" })
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
   );
 });
