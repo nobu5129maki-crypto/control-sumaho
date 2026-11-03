@@ -1,5 +1,5 @@
 // 更新のたびにバージョンを上げる（古いキャッシュを捨てるため）
-const CACHE = "control-sumaho-v3";
+const CACHE = "control-sumaho-v4";
 
 const PRECACHE_URLS = [
   "./index.html",

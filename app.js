@@ -28,6 +28,45 @@
     return typeof s === "string" && new RegExp(`^[0-9]{${CONFIRMER_PIN_LEN}}$`).test(s);
   }
 
+  /** 保存済みの秘密（旧: 平文4桁 / 現: SHA-256）。画面に出さない */
+  function isStoredPin(secret) {
+    return isValidConfirmerPin(secret) || (typeof secret === "string" && /^[a-f0-9]{64}$/.test(secret));
+  }
+
+  const PIN_HASH_PREFIX = "yarubekikoto-pin-v1:";
+
+  async function hashPin(pin) {
+    try {
+      if (!globalThis.crypto || !crypto.subtle) return pin;
+      const data = new TextEncoder().encode(PIN_HASH_PREFIX + pin);
+      const buf = await crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (_) {
+      return pin;
+    }
+  }
+
+  async function pinMatches(pin) {
+    const got = sanitizePinInput(pin);
+    if (!isValidConfirmerPin(got)) return false;
+    const secret = state.confirmerSecret;
+    if (isValidConfirmerPin(secret)) return got === secret;
+    const digest = await hashPin(got);
+    return digest === secret;
+  }
+
+  /** 以前の版が平文で保存した PIN を、表示しないハッシュに置き換える */
+  function upgradeLegacySecret() {
+    if (!isValidConfirmerPin(state.confirmerSecret)) return;
+    const plain = state.confirmerSecret;
+    hashPin(plain).then((digest) => {
+      if (!digest || digest === plain) return;
+      if (state.confirmerSecret !== plain) return;
+      state.confirmerSecret = digest;
+      saveSession();
+    });
+  }
+
   /** 数字だけ残す（全角・互換表記は NFKC で半角寄せ） */
   function sanitizePinInput(raw) {
     let s = String(raw || "");
@@ -63,6 +102,7 @@
           tasks: state.tasks,
           confirmations: state.confirmations,
           confirmerSecret: state.confirmerSecret,
+          draft: state.draft,
         })
       );
     } catch (_) {
@@ -88,6 +128,7 @@
         state.confirmations[t.id] = confirmations[t.id] === true;
       });
       const secret = typeof s.confirmerSecret === "string" ? s.confirmerSecret : "";
+      if (typeof s.draft === "string") state.draft = s.draft.slice(0, 500);
 
       if (s.phase === "blocked" && tasks.length > 0) {
         // 覆い中に閉じられた／リロードされた場合は覆いを復元する
@@ -97,7 +138,7 @@
           return;
         }
         state.phase = "blocked";
-        if (isValidConfirmerPin(secret)) {
+        if (isStoredPin(secret)) {
           state.confirmerSecret = secret;
           state.confirmPasswordMode = true;
         } else {
@@ -276,6 +317,7 @@
 
     input.addEventListener("input", () => {
       state.draft = input.value;
+      saveSession();
       rebuildChips();
     });
 
@@ -295,6 +337,8 @@
     });
 
     function onEnterAdd(e) {
+      // IME 変換確定の Enter では項目を追加しない（変換中の文字列がそのまま登録されるのを防ぐ）
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") {
         e.preventDefault();
         addBtn.click();
@@ -397,13 +441,14 @@
     pinInput.className = "input setpw-pin-input";
     pinInput.type = "tel";
     pinInput.inputMode = "numeric";
-    pinInput.maxLength = CONFIRMER_PIN_LEN;
     pinInput.autocomplete = "off";
     pinInput.spellcheck = false;
     pinInput.setAttribute("autocapitalize", "none");
     pinInput.setAttribute("autocorrect", "off");
     pinInput.enterKeyHint = "done";
     pinInput.placeholder = "例：1234";
+    // 保存値はハッシュのことがある。入力欄には途中までの数字だけを戻す
+    if (!/^[0-9]{0,4}$/.test(state.confirmerSecret)) state.confirmerSecret = "";
     pinInput.value = state.confirmerSecret;
     let pinComposing = false;
     function applyPinFromField() {
@@ -424,6 +469,13 @@
       if (pinComposing) return;
       applyPinFromField();
     });
+    pinInput.addEventListener("keydown", (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        goBtn.click();
+      }
+    });
     pinWrap.appendChild(pinLabel);
     pinWrap.appendChild(pinInput);
 
@@ -436,13 +488,18 @@
     }
     syncGo();
 
-    goBtn.addEventListener("click", () => {
-      if (!isValidConfirmerPin(state.confirmerSecret)) {
+    goBtn.addEventListener("click", async () => {
+      const plain = sanitizePinInput(pinInput.value);
+      if (!isValidConfirmerPin(plain)) {
         err.textContent = "4桁の半角数字を入力してください。";
         err.classList.remove("hidden");
         pinInput.focus();
         return;
       }
+      if (goBtn.dataset.busy === "1") return;
+      goBtn.dataset.busy = "1";
+      goBtn.disabled = true;
+      state.confirmerSecret = await hashPin(plain);
       state.confirmations = {};
       state.tasks.forEach((t) => {
         state.confirmations[t.id] = false;
@@ -474,13 +531,25 @@
   }
 
   function renderBlocked() {
-    const total = state.tasks.length;
+    if (state.tasks.length === 0) {
+      state.phase = "edit";
+      state.confirmerSecret = "";
+      render();
+      return;
+    }
+    if (state.tasks.every((t) => state.confirmations[t.id] === true)) {
+      state.phase = "done";
+      render();
+      return;
+    }
+
     const root = document.createElement("div");
     root.className = "view-blocked";
 
     if (state.confirmPasswordMode) {
-      if (!isValidConfirmerPin(state.confirmerSecret)) {
+      if (!isStoredPin(state.confirmerSecret)) {
         state.phase = "setPassword";
+        state.confirmerSecret = "";
         render();
         return;
       }
@@ -540,11 +609,16 @@
       lbl.className = "unlock-dialog-label";
       lbl.textContent = "確認者のパスワード（4桁の数字）";
       const pwdIn = document.createElement("input");
-      pwdIn.type = "password";
-      pwdIn.className = "unlock-dialog-input";
+      // 数字キーボードを出す。対応ブラウザでは文字を伏せる（非対応なら password）
+      const maskOk =
+        (window.CSS &&
+          (CSS.supports("-webkit-text-security", "disc") || CSS.supports("text-security", "disc"))) ||
+        false;
+      pwdIn.type = maskOk ? "tel" : "password";
+      if (maskOk) pwdIn.className = "unlock-dialog-input is-masked";
+      else pwdIn.className = "unlock-dialog-input";
       pwdIn.id = `confirmer-pwd-${task.id}`;
       pwdIn.inputMode = "numeric";
-      pwdIn.maxLength = CONFIRMER_PIN_LEN;
       pwdIn.placeholder = "4桁の数字";
       pwdIn.autocomplete = "off";
       pwdIn.enterKeyHint = "done";
@@ -560,6 +634,7 @@
       pwdIn.addEventListener("input", () => {
         if (composing) return;
         pwdIn.value = sanitizePinInput(pwdIn.value);
+        err.classList.add("hidden");
       });
 
       const err = document.createElement("p");
@@ -577,12 +652,40 @@
       submit.className = "unlock-dialog-submit";
       submit.textContent = "解除";
 
+      const vv = window.visualViewport;
+      function layoutOverlay() {
+        if (!vv) return;
+        if (!overlay.isConnected) {
+          vv.removeEventListener("resize", layoutOverlay);
+          vv.removeEventListener("scroll", layoutOverlay);
+          return;
+        }
+        // キーボードで見える範囲が縮んでも、入力欄がキーボードの裏に隠れないようにする
+        overlay.style.top = `${vv.offsetTop}px`;
+        overlay.style.left = `${vv.offsetLeft}px`;
+        overlay.style.width = `${vv.width}px`;
+        overlay.style.height = `${vv.height}px`;
+        overlay.style.bottom = "auto";
+        overlay.style.right = "auto";
+      }
       function close() {
+        if (vv) {
+          vv.removeEventListener("resize", layoutOverlay);
+          vv.removeEventListener("scroll", layoutOverlay);
+        }
         overlay.remove();
       }
-      function tryUnlock() {
+      let busy = false;
+      async function tryUnlock() {
+        if (busy) return;
         const got = sanitizePinInput(pwdIn.value);
-        if (!isValidConfirmerPin(got) || got !== state.confirmerSecret) {
+        busy = true;
+        submit.disabled = true;
+        const ok = await pinMatches(got);
+        busy = false;
+        submit.disabled = false;
+        if (!overlay.isConnected) return;
+        if (!ok) {
           err.textContent = "4桁の数字が違います";
           err.classList.remove("hidden");
           pwdIn.select();
@@ -595,6 +698,7 @@
       cancel.addEventListener("click", close);
       submit.addEventListener("click", tryUnlock);
       pwdIn.addEventListener("keydown", (e) => {
+        if (e.isComposing || e.keyCode === 229) return;
         if (e.key === "Enter") {
           e.preventDefault();
           tryUnlock();
@@ -616,15 +720,29 @@
       box.appendChild(actions);
       overlay.appendChild(box);
       root.appendChild(overlay);
+      if (vv) {
+        vv.addEventListener("resize", layoutOverlay);
+        vv.addEventListener("scroll", layoutOverlay);
+        layoutOverlay();
+      }
       pwdIn.focus();
     }
 
-    state.tasks.forEach((task, index) => {
+    // 解除済みの帯は詰め、残りの項目だけで画面を覆う。
+    // 以前は元の位置のまま空いたので、上に黒い空きができ、下の項目が画面外に切れていた。
+    const remaining = [];
+    state.tasks.forEach((task, colorIndex) => {
       if (state.confirmations[task.id] === true) return;
+      remaining.push({ task, colorIndex });
+    });
+    const count = remaining.length;
+    if (count >= 6) area.classList.add("is-crowded");
+    else if (count >= 4) area.classList.add("is-compact");
 
-      const topPct = (index / total) * 100;
-      const heightPct = 100 / total;
-      const [c0, c1] = SEGMENT_GRADIENTS[index % SEGMENT_GRADIENTS.length];
+    remaining.forEach(({ task, colorIndex }, index) => {
+      const topPct = (index / count) * 100;
+      const heightPct = 100 / count;
+      const [c0, c1] = SEGMENT_GRADIENTS[colorIndex % SEGMENT_GRADIENTS.length];
 
       const panel = document.createElement("div");
       panel.className = "panel";
@@ -773,7 +891,8 @@
             y: Math.random() * H,
             phase: Math.random() * Math.PI * 2,
             sp: 0.4 + Math.random() * 1.2,
-            r: 1 + Math.random() * 2,
+            r: 1.4 + Math.random() * 2.2,
+            color: PAL[Math.floor(Math.random() * PAL.length)],
           });
         }
       }
@@ -907,7 +1026,7 @@
         for (const s of acc.stars) {
           const a = 0.35 + 0.65 * Math.sin(time * s.sp + s.phase);
           ctx.globalAlpha = a;
-          ctx.fillStyle = "#fff";
+          ctx.fillStyle = s.color || "#4d96ff";
           ctx.beginPath();
           ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
           ctx.fill();
@@ -1125,6 +1244,8 @@
   loadConfirmerMode();
   loadSession();
   render();
+  upgradeLegacySecret();
+  document.documentElement.dataset.appBuild = "4";
 
   let lastLayoutWidth = window.innerWidth;
   window.addEventListener("resize", () => {
